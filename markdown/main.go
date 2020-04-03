@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"regexp"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -18,6 +19,8 @@ import (
 
 	"github.com/mattn/go-runewidth"
 )
+
+var emptyLineRE = regexp.MustCompile(`\n[\t ]+\n`)
 
 type MarkdownFmtRenderer struct {
 	normalTextMarker   map[*bytes.Buffer]int
@@ -120,7 +123,8 @@ func (mr *MarkdownFmtRenderer) blockCode(node ast.Node, source []byte) {
 	code = bytes.TrimSpace(code)
 	code = bytes.ReplaceAll(code, []byte{'\n'}, append([]byte{'\n'}, mr.leader()...))
 
-	mr.buf.Write(code)
+	mr.buf.Write(emptyLineRE.ReplaceAll(code, []byte{'\n', '\n'}))
+
 	mr.buf.WriteString("\n")
 	mr.buf.Write(mr.leader())
 	mr.buf.WriteString("```\n")
@@ -159,10 +163,9 @@ func (_ *MarkdownFmtRenderer) stringWidth(s string) int {
 func (mr *MarkdownFmtRenderer) header(node *ast.Heading, text []byte) {
 	mr.spaceBeforeParagraph(node)
 
-	if node.Level >= 3 {
-		mr.buf.Write(bytes.Repeat([]byte{'#'}, node.Level))
-		mr.buf.WriteByte(' ')
-	}
+	// We like to only use hash headers
+	mr.buf.Write(bytes.Repeat([]byte{'#'}, node.Level))
+	mr.buf.WriteByte(' ')
 
 	newBuf := bytes.NewBuffer(nil)
 
@@ -172,20 +175,7 @@ func (mr *MarkdownFmtRenderer) header(node *ast.Heading, text []byte) {
 		fmt.Fprintf(newBuf, " {#%s}", id)
 	}
 
-	slen := mr.stringWidth(newBuf.String())
-
 	mr.buf.Write(newBuf.Bytes())
-
-	switch node.Level {
-	case 1:
-		mr.buf.WriteByte('\n')
-		mr.buf.Write(mr.leader())
-		mr.buf.Write(bytes.Repeat([]byte{'='}, slen))
-	case 2:
-		mr.buf.WriteByte('\n')
-		mr.buf.Write(mr.leader())
-		mr.buf.Write(bytes.Repeat([]byte{'-'}, slen))
-	}
 
 	mr.buf.WriteString("\n")
 }

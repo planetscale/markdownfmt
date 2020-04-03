@@ -21,6 +21,7 @@ var (
 	list   = flag.Bool("l", false, "list files whose formatting differs from markdownfmt's")
 	write  = flag.Bool("w", false, "write result to (source) file instead of stdout")
 	doDiff = flag.Bool("d", false, "display diffs instead of rewriting files")
+	logF   = flag.Bool("v", false, "log files before processing")
 
 	exitCode = 0
 )
@@ -35,6 +36,17 @@ func usage() {
 	flag.PrintDefaults()
 }
 
+func skipDir(f os.FileInfo) error {
+	if !f.IsDir() {
+		return nil
+	}
+	switch name := f.Name(); name {
+	case ".git", ".github", "vendor", "node_modules", "third_party":
+		return filepath.SkipDir
+	}
+	return nil
+}
+
 func isMarkdownFile(f os.FileInfo) bool {
 	// Ignore non-Markdown files.
 	name := f.Name()
@@ -42,6 +54,9 @@ func isMarkdownFile(f os.FileInfo) bool {
 }
 
 func processFile(filename string, in io.Reader, out io.Writer) error {
+	if *logF {
+		fmt.Fprintln(os.Stderr, filename)
+	}
 	if in == nil {
 		f, err := os.Open(filename)
 		if err != nil {
@@ -82,6 +97,7 @@ func processFile(filename string, in io.Reader, out io.Writer) error {
 			if err != nil {
 				return fmt.Errorf("writing out: %s", err)
 			}
+			exitCode = 1
 		}
 	}
 
@@ -93,8 +109,15 @@ func processFile(filename string, in io.Reader, out io.Writer) error {
 }
 
 func visitFile(path string, f os.FileInfo, err error) error {
-	if err == nil && isMarkdownFile(f) {
-		err = processFile(path, nil, os.Stdout)
+	if err == nil {
+		if skip := skipDir(f); skip != nil {
+			return skip
+		} else if isMarkdownFile(f) {
+			err = processFile(path, nil, os.Stdout)
+			if err != nil {
+				report(err)
+			}
+		}
 	}
 	if err != nil {
 		report(err)
